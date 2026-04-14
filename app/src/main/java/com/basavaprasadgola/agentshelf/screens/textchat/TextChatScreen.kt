@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -69,9 +71,33 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
     }
 
     Column(
-        modifier = modifier.fillMaxSize()
+        modifier = modifier
+            .fillMaxSize()
+            .imePadding()              // ← pushes bottom input bar up when keyboard opens
+            .navigationBarsPadding()   // ← handles gesture nav bar insets
     ) {
-        // Chat messages
+        // ── Fixed Header ──────────────────────────────────────────────
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.Black)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Chat with Basavaprasad",
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Ask me anything!",
+                color = Color.White.copy(alpha = 0.5f),
+                fontSize = 13.sp
+            )
+        }
+
+        // ── Scrollable Chat Messages ───────────────────────────────────
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -82,24 +108,18 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
         ) {
             item { Spacer(modifier = Modifier.height(8.dp)) }
 
-            // Welcome message
+            // Empty state hint
             if (messages.isEmpty()) {
                 item {
                     Column(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 60.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Spacer(modifier = Modifier.height(100.dp))
                         Text(
-                            text = "Chat with Basavaprasad",
-                            color = Color.White,
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Ask me anything!",
-                            color = Color.White.copy(alpha = 0.5f),
+                            text = "Start the conversation 👋",
+                            color = Color.White.copy(alpha = 0.35f),
                             fontSize = 14.sp
                         )
                     }
@@ -114,10 +134,11 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
             if (isLoading) {
                 item {
                     Row(
-                        modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                        modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(16.dp),
                             color = Color.White,
                             strokeWidth = 2.dp
                         )
@@ -133,7 +154,7 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
             item { Spacer(modifier = Modifier.height(8.dp)) }
         }
 
-        // Input bar
+        // ── Input Bar (stays above keyboard) ──────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -169,7 +190,6 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
                         inputText = ""
                         messages.add(ChatMessage(text, isUser = true))
                         isLoading = true
-
                         scope.launch {
                             val reply = sendMessage(text)
                             messages.add(ChatMessage(reply, isUser = false))
@@ -196,7 +216,6 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
 @Composable
 private fun ChatBubble(message: ChatMessage) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start
@@ -213,14 +232,14 @@ private fun ChatBubble(message: ChatMessage) {
                     )
                 )
                 .background(
-                    if (message.isUser) Color.White
+                    if (message.isUser) Color.Black
                     else Color.White.copy(alpha = 0.1f)
                 )
                 .padding(12.dp)
         ) {
             Text(
                 text = message.text,
-                color = if (message.isUser) Color.Black else Color.White,
+                color = if (message.isUser) Color.White else Color.White,
                 fontSize = 15.sp,
                 lineHeight = 22.sp
             )
@@ -239,18 +258,12 @@ private suspend fun sendMessage(message: String): String {
             connection.connectTimeout = 30000
             connection.readTimeout = 30000
 
-            val jsonBody = JSONObject().apply {
-                put("message", message)
-            }
-
-            connection.outputStream.use { os ->
-                os.write(jsonBody.toString().toByteArray())
-            }
+            val jsonBody = JSONObject().apply { put("message", message) }
+            connection.outputStream.use { os -> os.write(jsonBody.toString().toByteArray()) }
 
             if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                 val response = connection.inputStream.bufferedReader().readText()
-                val jsonResponse = JSONObject(response)
-                jsonResponse.optString("response", "No response")
+                JSONObject(response).optString("response", "No response")
             } else {
                 "Error: ${connection.responseCode}"
             }
