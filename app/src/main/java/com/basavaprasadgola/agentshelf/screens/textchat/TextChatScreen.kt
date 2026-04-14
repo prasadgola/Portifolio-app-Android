@@ -1,19 +1,9 @@
 package com.basavaprasadgola.agentshelf.screens.textchat
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -21,26 +11,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -51,32 +31,33 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 data class ChatMessage(
+    val id: Long = System.nanoTime(),
     val text: String,
-    val isUser: Boolean
+    val isUser: Boolean,
+    val replyTo: ChatMessage? = null
 )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TextChatScreen(modifier: Modifier = Modifier) {
     val messages = remember { mutableStateListOf<ChatMessage>() }
     var inputText by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var replyingTo by remember { mutableStateOf<ChatMessage?>(null) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
-    // Auto-scroll to bottom when new message arrives
     LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
-        }
+        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
     }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .imePadding()              // ← pushes bottom input bar up when keyboard opens
-            .navigationBarsPadding()   // ← handles gesture nav bar insets
+            .imePadding()
+            .navigationBarsPadding()
     ) {
-        // ── Fixed Header ──────────────────────────────────────────────
+        // ── Fixed Header ──────────────────────────────────────────
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -97,7 +78,7 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
             )
         }
 
-        // ── Scrollable Chat Messages ───────────────────────────────────
+        // ── Chat Messages ─────────────────────────────────────────
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -106,9 +87,8 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
                 .padding(horizontal = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            item { Spacer(modifier = Modifier.height(8.dp)) }
+            item { Spacer(Modifier.height(8.dp)) }
 
-            // Empty state hint
             if (messages.isEmpty()) {
                 item {
                     Column(
@@ -126,11 +106,13 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
                 }
             }
 
-            items(messages) { message ->
-                ChatBubble(message = message)
+            items(messages, key = { it.id }) { message ->
+                ChatBubble(
+                    message = message,
+                    onLongPress = { replyingTo = message }
+                )
             }
 
-            // Loading indicator
             if (isLoading) {
                 item {
                     Row(
@@ -151,10 +133,53 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
                 }
             }
 
-            item { Spacer(modifier = Modifier.height(8.dp)) }
+            item { Spacer(Modifier.height(8.dp)) }
         }
 
-        // ── Input Bar (stays above keyboard) ──────────────────────────
+        // ── Reply Preview Bar ─────────────────────────────────────
+        if (replyingTo != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color.White.copy(alpha = 0.08f))
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(3.dp)
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color.White.copy(alpha = 0.6f))
+                )
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = if (replyingTo!!.isUser) "You" else "Basavaprasad",
+                        color = Color.White.copy(alpha = 0.9f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = replyingTo!!.text,
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                IconButton(onClick = { replyingTo = null }) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Cancel reply",
+                        tint = Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+
+        // ── Input Bar ─────────────────────────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -187,12 +212,17 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
                 onClick = {
                     val text = inputText.trim()
                     if (text.isNotEmpty() && !isLoading) {
+                        val quoted = replyingTo
                         inputText = ""
-                        messages.add(ChatMessage(text, isUser = true))
+                        replyingTo = null
+                        messages.add(ChatMessage(text = text, isUser = true, replyTo = quoted))
                         isLoading = true
                         scope.launch {
-                            val reply = sendMessage(text)
-                            messages.add(ChatMessage(reply, isUser = false))
+                            val reply = sendMessage(
+                                message = text,
+                                replyContext = quoted?.text
+                            )
+                            messages.add(ChatMessage(text = reply, isUser = false))
                             isLoading = false
                         }
                     }
@@ -213,9 +243,14 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ChatBubble(message: ChatMessage) {
+private fun ChatBubble(
+    message: ChatMessage,
+    onLongPress: () -> Unit
+) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start
@@ -232,22 +267,80 @@ private fun ChatBubble(message: ChatMessage) {
                     )
                 )
                 .background(
-                    if (message.isUser) Color.Black
-                    else Color.White.copy(alpha = 0.1f)
+                    if (message.isUser) Color.White else Color.White.copy(alpha = 0.1f)
+                )
+                .combinedClickable(
+                    onClick = {},
+                    onLongClick = onLongPress
                 )
                 .padding(12.dp)
         ) {
-            Text(
-                text = message.text,
-                color = if (message.isUser) Color.White else Color.White,
-                fontSize = 15.sp,
-                lineHeight = 22.sp
-            )
+            Column {
+                // ── Quoted reply snippet ──────────────────────────
+                if (message.replyTo != null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                if (message.isUser)
+                                    Color.Black.copy(alpha = 0.08f)
+                                else
+                                    Color.White.copy(alpha = 0.08f)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(3.dp)
+                                .height(32.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(
+                                    if (message.isUser)
+                                        Color.Black.copy(alpha = 0.3f)
+                                    else
+                                        Color.White.copy(alpha = 0.4f)
+                                )
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = if (message.replyTo.isUser) "You" else "Basavaprasad",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (message.isUser)
+                                    Color.Black.copy(alpha = 0.6f)
+                                else
+                                    Color.White.copy(alpha = 0.7f)
+                            )
+                            Text(
+                                text = message.replyTo.text,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = if (message.isUser)
+                                    Color.Black.copy(alpha = 0.45f)
+                                else
+                                    Color.White.copy(alpha = 0.45f)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                }
+
+                // ── Actual message text ───────────────────────────
+                Text(
+                    text = message.text,
+                    color = if (message.isUser) Color.Black else Color.White,
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp
+                )
+            }
         }
     }
 }
 
-private suspend fun sendMessage(message: String): String {
+private suspend fun sendMessage(message: String, replyContext: String? = null): String {
     return withContext(Dispatchers.IO) {
         try {
             val url = URL("https://basavaprasad-digital-twin-882178443942.us-central1.run.app/chat")
@@ -258,8 +351,21 @@ private suspend fun sendMessage(message: String): String {
             connection.connectTimeout = 30000
             connection.readTimeout = 30000
 
-            val jsonBody = JSONObject().apply { put("message", message) }
-            connection.outputStream.use { os -> os.write(jsonBody.toString().toByteArray()) }
+            val combinedMessage = if (replyContext != null) {
+                "Replying to: \"$replyContext\" | My message: $message"
+            } else {
+                message
+            }
+
+            val jsonBody = JSONObject().apply {
+                put("message", combinedMessage)
+            }
+
+            android.util.Log.d("TextChat", "Sending: $jsonBody")
+
+            connection.outputStream.use { os ->
+                os.write(jsonBody.toString().toByteArray())
+            }
 
             if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                 val response = connection.inputStream.bufferedReader().readText()
