@@ -1,5 +1,7 @@
 package com.basavaprasadgola.agentshelf.screens.textchat
 
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -14,29 +16,36 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Reply
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.*
 
 data class ChatMessage(
     val id: Long = System.nanoTime(),
     val text: String,
     val isUser: Boolean,
-    val replyTo: ChatMessage? = null
+    val replyTo: ChatMessage? = null,
+    val scheduledAt: Long? = null,      // epoch ms, null = sent immediately
+    val isPending: Boolean = false      // true = waiting for scheduled time
 )
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
@@ -49,9 +58,87 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
     var selectedMessage by remember { mutableStateOf<ChatMessage?>(null) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val context = LocalContext.current
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    }
+
+    // ── Helper: actually send a message to backend ────────────────
+    fun dispatchMessage(text: String, replyContext: String?) {
+        isLoading = true
+        scope.launch {
+            val reply = sendMessage(message = text, replyContext = replyContext)
+            messages.add(ChatMessage(text = reply, isUser = false))
+            isLoading = false
+        }
+    }
+
+    // ── Schedule picker helper ────────────────────────────────────
+    fun showSchedulePicker(text: String, quoted: ChatMessage?) {
+        val now = Calendar.getInstance()
+
+        fun showTimePicker(selectedDate: Calendar) {
+            TimePickerDialog(
+                context,
+                { _, hour, minute ->
+                    selectedDate.set(Calendar.HOUR_OF_DAY, hour)
+                    selectedDate.set(Calendar.MINUTE, minute)
+                    selectedDate.set(Calendar.SECOND, 0)
+                    selectedDate.set(Calendar.MILLISECOND, 0)
+
+                    val scheduledMs = selectedDate.timeInMillis
+                    val delayMs = scheduledMs - System.currentTimeMillis()
+
+                    // ✅ Clear input only after user confirms time
+                    inputText = ""
+                    replyingTo = null
+
+                    if (delayMs <= 0) {
+                        messages.add(ChatMessage(text = text, isUser = true, replyTo = quoted))
+                        dispatchMessage(text, quoted?.text)
+                    } else {
+                        val pendingMsg = ChatMessage(
+                            text = text,
+                            isUser = true,
+                            replyTo = quoted,
+                            scheduledAt = scheduledMs,
+                            isPending = true
+                        )
+                        messages.add(pendingMsg)
+
+                        scope.launch {
+                            delay(delayMs)
+                            val idx = messages.indexOfFirst { it.id == pendingMsg.id }
+                            if (idx != -1) {
+                                messages[idx] = pendingMsg.copy(isPending = false, scheduledAt = null)
+                                dispatchMessage(text, quoted?.text)
+                            }
+                        }
+                    }
+                },
+                now.get(Calendar.HOUR_OF_DAY),
+                now.get(Calendar.MINUTE),
+                false
+            ).show()
+        }
+
+        DatePickerDialog(
+            context,
+            { _, year, month, day ->
+                val selectedDate = Calendar.getInstance().apply {
+                    set(Calendar.YEAR, year)
+                    set(Calendar.MONTH, month)
+                    set(Calendar.DAY_OF_MONTH, day)
+                }
+                showTimePicker(selectedDate)
+            },
+            now.get(Calendar.YEAR),
+            now.get(Calendar.MONTH),
+            now.get(Calendar.DAY_OF_MONTH)
+        ).apply {
+            datePicker.minDate = now.timeInMillis
+        }.show()
     }
 
     // ── Action Bottom Sheet ───────────────────────────────────────
@@ -74,7 +161,7 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
 
-                // Reply option
+                // Reply
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -87,23 +174,14 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Reply,
-                        contentDescription = "Reply",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Icon(Icons.Default.Reply, contentDescription = "Reply", tint = Color.White, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(14.dp))
-                    Text(
-                        text = "Reply",
-                        color = Color.White,
-                        fontSize = 15.sp
-                    )
+                    Text("Reply", color = Color.White, fontSize = 15.sp)
                 }
 
                 Spacer(Modifier.height(8.dp))
 
-                // Delete option
+                // Delete
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -116,18 +194,9 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete",
-                        tint = Color(0xFFFF3B30),
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFFF3B30), modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(14.dp))
-                    Text(
-                        text = "Delete",
-                        color = Color(0xFFFF3B30),
-                        fontSize = 15.sp
-                    )
+                    Text("Delete", color = Color(0xFFFF3B30), fontSize = 15.sp)
                 }
             }
         }
@@ -147,17 +216,8 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                text = "Chat with Basavaprasad",
-                color = Color.White,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Ask me anything!",
-                color = Color.White.copy(alpha = 0.5f),
-                fontSize = 13.sp
-            )
+            Text("Chat with Basavaprasad", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text("Ask me anything!", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp)
         }
 
         // ── Chat Messages ─────────────────────────────────────────
@@ -174,16 +234,10 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
             if (messages.isEmpty()) {
                 item {
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 60.dp),
+                        modifier = Modifier.fillMaxWidth().padding(top = 60.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(
-                            text = "Start the conversation 👋",
-                            color = Color.White.copy(alpha = 0.35f),
-                            fontSize = 14.sp
-                        )
+                        Text("Start the conversation 👋", color = Color.White.copy(alpha = 0.35f), fontSize = 14.sp)
                     }
                 }
             }
@@ -201,16 +255,8 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
                         modifier = Modifier.padding(start = 4.dp, top = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
-                        )
-                        Text(
-                            text = "  Thinking...",
-                            color = Color.White.copy(alpha = 0.5f),
-                            fontSize = 14.sp
-                        )
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                        Text("  Thinking...", color = Color.White.copy(alpha = 0.5f), fontSize = 14.sp)
                     }
                 }
             }
@@ -229,8 +275,7 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
             ) {
                 Box(
                     modifier = Modifier
-                        .width(3.dp)
-                        .height(36.dp)
+                        .width(3.dp).height(36.dp)
                         .clip(RoundedCornerShape(2.dp))
                         .background(Color.White.copy(alpha = 0.6f))
                 )
@@ -251,12 +296,7 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
                     )
                 }
                 IconButton(onClick = { replyingTo = null }) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Cancel reply",
-                        tint = Color.White.copy(alpha = 0.5f),
-                        modifier = Modifier.size(18.dp)
-                    )
+                    Icon(Icons.Default.Close, contentDescription = "Cancel reply", tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(18.dp))
                 }
             }
         }
@@ -272,12 +312,7 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
             OutlinedTextField(
                 value = inputText,
                 onValueChange = { inputText = it },
-                placeholder = {
-                    Text(
-                        "Type a message...",
-                        color = Color.White.copy(alpha = 0.4f)
-                    )
-                },
+                placeholder = { Text("Type a message...", color = Color.White.copy(alpha = 0.4f)) },
                 modifier = Modifier.weight(1f),
                 colors = OutlinedTextFieldDefaults.colors(
                     unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
@@ -290,6 +325,30 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
                 singleLine = true
             )
 
+            // ── Schedule button ───────────────────────────────────
+            IconButton(
+                onClick = {
+                    val text = inputText.trim()
+                    if (text.isNotEmpty() && !isLoading) {
+                        val quoted = replyingTo
+                        showSchedulePicker(text, quoted)  // ✅ don't clear input here
+                    }
+                },
+                modifier = Modifier
+                    .padding(start = 6.dp)
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.12f))
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Schedule,
+                    contentDescription = "Schedule",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // ── Send button ───────────────────────────────────────
             IconButton(
                 onClick = {
                     val text = inputText.trim()
@@ -298,28 +357,16 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
                         inputText = ""
                         replyingTo = null
                         messages.add(ChatMessage(text = text, isUser = true, replyTo = quoted))
-                        isLoading = true
-                        scope.launch {
-                            val reply = sendMessage(
-                                message = text,
-                                replyContext = quoted?.text
-                            )
-                            messages.add(ChatMessage(text = reply, isUser = false))
-                            isLoading = false
-                        }
+                        dispatchMessage(text, quoted?.text)
                     }
                 },
                 modifier = Modifier
-                    .padding(start = 8.dp)
+                    .padding(start = 6.dp)
                     .size(44.dp)
                     .clip(CircleShape)
                     .background(Color.White)
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send",
-                    tint = Color.Black
-                )
+                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = Color.Black)
             }
         }
     }
@@ -332,89 +379,109 @@ private fun ChatBubble(
     onLongPress: () -> Unit
 ) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val timeFormat = remember { SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()) }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start
     ) {
-        Box(
-            modifier = Modifier
-                .widthIn(max = screenWidth * 0.75f)
-                .clip(
-                    RoundedCornerShape(
-                        topStart = 16.dp,
-                        topEnd = 16.dp,
-                        bottomStart = if (message.isUser) 16.dp else 4.dp,
-                        bottomEnd = if (message.isUser) 4.dp else 16.dp
-                    )
-                )
-                .background(
-                    if (message.isUser) Color.White else Color.White.copy(alpha = 0.1f)
-                )
-                .combinedClickable(
-                    onClick = {},
-                    onLongClick = onLongPress
-                )
-                .padding(12.dp)
+        Column(
+            horizontalAlignment = if (message.isUser) Alignment.End else Alignment.Start
         ) {
-            Column {
-                if (message.replyTo != null) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(
-                                if (message.isUser)
-                                    Color.Black.copy(alpha = 0.08f)
-                                else
-                                    Color.White.copy(alpha = 0.08f)
-                            )
-                            .padding(horizontal = 8.dp, vertical = 6.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .width(3.dp)
-                                .height(32.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(
-                                    if (message.isUser)
-                                        Color.Black.copy(alpha = 0.3f)
-                                    else
-                                        Color.White.copy(alpha = 0.4f)
-                                )
+            Box(
+                modifier = Modifier
+                    .widthIn(max = screenWidth * 0.75f)
+                    .clip(
+                        RoundedCornerShape(
+                            topStart = 16.dp, topEnd = 16.dp,
+                            bottomStart = if (message.isUser) 16.dp else 4.dp,
+                            bottomEnd = if (message.isUser) 4.dp else 16.dp
                         )
-                        Spacer(Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = if (message.replyTo.isUser) "You" else "Basavaprasad",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = if (message.isUser)
-                                    Color.Black.copy(alpha = 0.6f)
-                                else
-                                    Color.White.copy(alpha = 0.7f)
-                            )
-                            Text(
-                                text = message.replyTo.text,
-                                fontSize = 12.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                color = if (message.isUser)
-                                    Color.Black.copy(alpha = 0.45f)
-                                else
-                                    Color.White.copy(alpha = 0.45f)
-                            )
+                    )
+                    .background(
+                        when {
+                            message.isPending -> Color.White.copy(alpha = 0.25f) // dimmed pending
+                            message.isUser -> Color.White
+                            else -> Color.White.copy(alpha = 0.1f)
                         }
+                    )
+                    .combinedClickable(onClick = {}, onLongClick = onLongPress)
+                    .padding(12.dp)
+            ) {
+                Column {
+                    // Quoted reply snippet
+                    if (message.replyTo != null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (message.isUser) Color.Black.copy(alpha = 0.08f)
+                                    else Color.White.copy(alpha = 0.08f)
+                                )
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(3.dp).height(32.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(
+                                        if (message.isUser) Color.Black.copy(alpha = 0.3f)
+                                        else Color.White.copy(alpha = 0.4f)
+                                    )
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = if (message.replyTo.isUser) "You" else "Basavaprasad",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (message.isUser) Color.Black.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.7f)
+                                )
+                                Text(
+                                    text = message.replyTo.text,
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = if (message.isUser) Color.Black.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.45f)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
                     }
-                    Spacer(Modifier.height(6.dp))
-                }
 
-                Text(
-                    text = message.text,
-                    color = if (message.isUser) Color.Black else Color.White,
-                    fontSize = 15.sp,
-                    lineHeight = 22.sp
-                )
+                    Text(
+                        text = message.text,
+                        color = when {
+                            message.isPending -> Color.White.copy(alpha = 0.5f)
+                            message.isUser -> Color.Black
+                            else -> Color.White
+                        },
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp
+                    )
+                }
+            }
+
+            // ── Scheduled label below bubble ──────────────────────
+            if (message.isPending && message.scheduledAt != null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 3.dp, end = 4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Schedule,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.4f),
+                        modifier = Modifier.size(11.dp)
+                    )
+                    Spacer(Modifier.width(3.dp))
+                    Text(
+                        text = "Scheduled · ${timeFormat.format(Date(message.scheduledAt))}",
+                        color = Color.White.copy(alpha = 0.4f),
+                        fontSize = 11.sp
+                    )
+                }
             }
         }
     }
@@ -443,9 +510,7 @@ private suspend fun sendMessage(message: String, replyContext: String? = null): 
 
             android.util.Log.d("TextChat", "Sending: $jsonBody")
 
-            connection.outputStream.use { os ->
-                os.write(jsonBody.toString().toByteArray())
-            }
+            connection.outputStream.use { os -> os.write(jsonBody.toString().toByteArray()) }
 
             if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                 val response = connection.inputStream.bufferedReader().readText()
