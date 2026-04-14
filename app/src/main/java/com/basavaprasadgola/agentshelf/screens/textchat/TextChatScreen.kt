@@ -12,6 +12,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,18 +39,98 @@ data class ChatMessage(
     val replyTo: ChatMessage? = null
 )
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun TextChatScreen(modifier: Modifier = Modifier) {
     val messages = remember { mutableStateListOf<ChatMessage>() }
     var inputText by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var replyingTo by remember { mutableStateOf<ChatMessage?>(null) }
+    var selectedMessage by remember { mutableStateOf<ChatMessage?>(null) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    }
+
+    // ── Action Bottom Sheet ───────────────────────────────────────
+    if (selectedMessage != null) {
+        ModalBottomSheet(
+            onDismissRequest = { selectedMessage = null },
+            containerColor = Color(0xFF1A1A1A),
+            tonalElevation = 0.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 32.dp)
+            ) {
+                Text(
+                    text = "Message",
+                    color = Color.White.copy(alpha = 0.4f),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+
+                // Reply option
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White.copy(alpha = 0.06f))
+                        .combinedClickable(onClick = {
+                            replyingTo = selectedMessage
+                            selectedMessage = null
+                        })
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Reply,
+                        contentDescription = "Reply",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(14.dp))
+                    Text(
+                        text = "Reply",
+                        color = Color.White,
+                        fontSize = 15.sp
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                // Delete option
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFFFF3B30).copy(alpha = 0.12f))
+                        .combinedClickable(onClick = {
+                            messages.remove(selectedMessage)
+                            selectedMessage = null
+                        })
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete",
+                        tint = Color(0xFFFF3B30),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(14.dp))
+                    Text(
+                        text = "Delete",
+                        color = Color(0xFFFF3B30),
+                        fontSize = 15.sp
+                    )
+                }
+            }
+        }
     }
 
     Column(
@@ -109,7 +191,7 @@ fun TextChatScreen(modifier: Modifier = Modifier) {
             items(messages, key = { it.id }) { message ->
                 ChatBubble(
                     message = message,
-                    onLongPress = { replyingTo = message }
+                    onLongPress = { selectedMessage = message }
                 )
             }
 
@@ -276,7 +358,6 @@ private fun ChatBubble(
                 .padding(12.dp)
         ) {
             Column {
-                // ── Quoted reply snippet ──────────────────────────
                 if (message.replyTo != null) {
                     Row(
                         modifier = Modifier
@@ -328,7 +409,6 @@ private fun ChatBubble(
                     Spacer(Modifier.height(6.dp))
                 }
 
-                // ── Actual message text ───────────────────────────
                 Text(
                     text = message.text,
                     color = if (message.isUser) Color.Black else Color.White,
