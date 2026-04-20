@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -87,96 +88,149 @@ fun VoiceChatScreen(modifier: Modifier = Modifier) {
     }
 
     Column(
-        modifier = modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = when (voiceState) {
-                "idle" -> "Tap to connect"
-                "connecting" -> "Connecting..."
-                "listening" -> "Listening..."
-                "speaking" -> "Speaking..."
-                else -> voiceState
-            },
-            color = Color.White.copy(alpha = 0.6f),
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Normal
-        )
 
-        Spacer(modifier = Modifier.height(48.dp))
-
+        // ── TOP AREA: Status + Live Chat ──────────────────────────────────────
+        //
+        // This box takes all available space above the button.
+        // Replace the placeholder content here with your actual live chat UI
+        // (e.g., a LazyColumn of messages, transcript text, etc.)
+        //
         Box(
-            contentAlignment = Alignment.Center,
             modifier = Modifier
-                .size(200.dp)
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.05f))
-                .clickable {
-                    Log.d(TAG, "TAPPED! State: $voiceState")
-                    if (voiceState == "idle") {
-                        val hasPermission = ContextCompat.checkSelfPermission(
-                            context, Manifest.permission.RECORD_AUDIO
-                        ) == PackageManager.PERMISSION_GRANTED
-                        if (!hasPermission) {
-                            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                        } else {
-                            val s = VoiceSession { voiceState = it }
-                            session = s
-                            s.start()
-                        }
-                    } else {
-                        session?.stop()
-                        session = null
-                        voiceState = "idle"
-                    }
-                }
+                .weight(1f)           // ← consumes all space above the button
+                .fillMaxWidth()
+                .padding(top = 32.dp),
+            contentAlignment = Alignment.TopCenter
         ) {
-            if (voiceState == "listening" || voiceState == "speaking") {
-                PulseRing(size = 200, color = Color.White)
-                PulseRing(size = 160, color = Color.White, delayMillis = 300)
-            }
-
-            Box(
-                modifier = Modifier
-                    .size(120.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (voiceState == "idle") Color.White.copy(alpha = 0.1f)
-                        else Color.White.copy(alpha = 0.2f)
-                    ),
-                contentAlignment = Alignment.Center
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Top
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(80.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (voiceState == "listening" || voiceState == "speaking")
-                                Color.White else Color.White.copy(alpha = 0.15f)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (voiceState == "idle") Icons.Default.Call
-                        else Icons.Default.Close,
-                        contentDescription = "Voice",
-                        tint = if (voiceState == "listening" || voiceState == "speaking")
-                            Color.Black else Color.White,
-                        modifier = Modifier.size(32.dp)
-                    )
+
+                // Connection status label at the very top
+                Text(
+                    text = when (voiceState) {
+                        "idle"       -> "Tap to connect"
+                        "connecting" -> "Connecting…"
+                        "listening"  -> "Listening…"
+                        "speaking"   -> "Speaking…"
+                        else         -> voiceState
+                    },
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Normal
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // ── PLACEHOLDER: replace this with your real chat/transcript UI ──
+                // Example:
+                //   LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                //       items(messages) { msg -> ChatBubble(msg) }
+                //   }
+                //
+                // For now, a subtle placeholder box is shown when idle:
+                if (voiceState == "idle") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .background(Color.White.copy(alpha = 0.04f), shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Conversation will appear here",
+                            color = Color.White.copy(alpha = 0.2f),
+                            fontSize = 13.sp
+                        )
+                    }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(48.dp))
+        // ── BOTTOM AREA: Call Button ───────────────────────────────────────────
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(bottom = 56.dp)
+        ) {
 
-        if (voiceState != "idle") {
-            Text(
-                text = "Tap to end",
-                color = Color.White.copy(alpha = 0.3f),
-                fontSize = 14.sp
-            )
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(200.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.05f))
+                    .clickable {
+                        Log.d(TAG, "TAPPED! State: $voiceState")
+                        if (voiceState == "idle") {
+                            val hasPermission = ContextCompat.checkSelfPermission(
+                                context, Manifest.permission.RECORD_AUDIO
+                            ) == PackageManager.PERMISSION_GRANTED
+                            if (!hasPermission) {
+                                permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            } else {
+                                val s = VoiceSession { voiceState = it }
+                                session = s
+                                s.start()
+                            }
+                        } else {
+                            session?.stop()
+                            session = null
+                            voiceState = "idle"
+                        }
+                    }
+            ) {
+                if (voiceState == "listening" || voiceState == "speaking") {
+                    PulseRing(size = 200, color = Color.White)
+                    PulseRing(size = 160, color = Color.White, delayMillis = 300)
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (voiceState == "idle") Color.White.copy(alpha = 0.1f)
+                            else Color.White.copy(alpha = 0.2f)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (voiceState == "listening" || voiceState == "speaking")
+                                    Color.White else Color.White.copy(alpha = 0.15f)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (voiceState == "idle") Icons.Default.Call
+                            else Icons.Default.Close,
+                            contentDescription = "Voice",
+                            tint = if (voiceState == "listening" || voiceState == "speaking")
+                                Color.Black else Color.White,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (voiceState != "idle") {
+                Text(
+                    text = "Tap to end",
+                    color = Color.White.copy(alpha = 0.3f),
+                    fontSize = 14.sp
+                )
+            }
         }
     }
 }
