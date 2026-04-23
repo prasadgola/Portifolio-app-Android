@@ -30,6 +30,7 @@ import com.basavaprasadgola.agentshelf.screens.home.HomeScreen
 import com.basavaprasadgola.agentshelf.screens.readtext.ReadTextScreen
 import com.basavaprasadgola.agentshelf.screens.textchat.TextChatScreen
 import com.basavaprasadgola.agentshelf.screens.voicechat.VoiceChatScreen
+import com.basavaprasadgola.agentshelf.screens.TextUI.TextUIScreen
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
 
@@ -91,6 +92,7 @@ fun BasavaprasadApp() {
                 AppDestinations.TEXTCHAT -> TextChatScreen(Modifier.padding(innerPadding))
                 AppDestinations.READTEXT -> ReadTextScreen(Modifier.padding(innerPadding))
                 AppDestinations.VOICECHAT -> VoiceChatScreen(Modifier.padding(paddingValues = innerPadding))
+                AppDestinations.TEXTUI -> TextUIScreen(Modifier.padding(paddingValues = innerPadding))
             }
         }
     }

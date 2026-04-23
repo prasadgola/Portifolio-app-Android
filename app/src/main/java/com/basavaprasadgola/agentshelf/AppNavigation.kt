@@ -11,6 +11,8 @@ enum class AppDestinations(
     val icon: ImageVector,
 ) {
     HOME("Home", Icons.Default.Home),
+
+    TEXTUI("TextUI", Icons.Default.Favorite),
     VOICECHAT(label = "VoiceChat", Icons.Default.AccountBox),
 
     TEXTCHAT("TextChat", Icons.Default.Favorite),
