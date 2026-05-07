@@ -23,9 +23,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -88,159 +86,108 @@ fun VoiceChatScreen(modifier: Modifier = Modifier) {
     }
 
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        modifier = modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
+        Text(
+            text = when (voiceState) {
+                "idle"       -> "Tap to connect"
+                "connecting" -> "Connecting..."
+                "listening"  -> "Listening..."
+                "speaking"   -> "Speaking..."
+                else         -> voiceState
+            },
+            color = Color.White.copy(alpha = 0.6f),
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Normal
+        )
 
-        // ── TOP AREA: Status + Live Chat ──────────────────────────────────────
-        //
-        // This box takes all available space above the button.
-        // Replace the placeholder content here with your actual live chat UI
-        // (e.g., a LazyColumn of messages, transcript text, etc.)
-        //
+        Spacer(modifier = Modifier.height(48.dp))
+
         Box(
+            contentAlignment = Alignment.Center,
             modifier = Modifier
-                .weight(1f)           // ← consumes all space above the button
-                .fillMaxWidth()
-                .padding(top = 32.dp),
-            contentAlignment = Alignment.TopCenter
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Top
-            ) {
-
-                // Connection status label at the very top
-                Text(
-                    text = when (voiceState) {
-                        "idle"       -> "Tap to connect"
-                        "connecting" -> "Connecting…"
-                        "listening"  -> "Listening…"
-                        "speaking"   -> "Speaking…"
-                        else         -> voiceState
-                    },
-                    color = Color.White.copy(alpha = 0.6f),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Normal
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // ── PLACEHOLDER: replace this with your real chat/transcript UI ──
-                // Example:
-                //   LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                //       items(messages) { msg -> ChatBubble(msg) }
-                //   }
-                //
-                // For now, a subtle placeholder box is shown when idle:
-                if (voiceState == "idle") {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp)
-                            .background(Color.White.copy(alpha = 0.04f), shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Conversation will appear here",
-                            color = Color.White.copy(alpha = 0.2f),
-                            fontSize = 13.sp
-                        )
+                .size(200.dp)
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = 0.05f))
+                .clickable {
+                    Log.d(TAG, "TAPPED! State: $voiceState")
+                    if (voiceState == "idle") {
+                        val hasPermission = ContextCompat.checkSelfPermission(
+                            context, Manifest.permission.RECORD_AUDIO
+                        ) == PackageManager.PERMISSION_GRANTED
+                        if (!hasPermission) {
+                            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        } else {
+                            val s = VoiceSession { voiceState = it }
+                            session = s
+                            s.start()
+                        }
+                    } else {
+                        session?.stop()
+                        session = null
+                        voiceState = "idle"
                     }
+                }
+        ) {
+            if (voiceState == "listening" || voiceState == "speaking") {
+                PulseRing(size = 200, color = Color.White)
+                PulseRing(size = 160, color = Color.White, delayMillis = 300)
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(120.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (voiceState == "idle") Color.White.copy(alpha = 0.1f)
+                        else Color.White.copy(alpha = 0.2f)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (voiceState == "listening" || voiceState == "speaking")
+                                Color.White else Color.White.copy(alpha = 0.15f)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (voiceState == "idle") Icons.Default.Call
+                        else Icons.Default.Close,
+                        contentDescription = "Voice",
+                        tint = if (voiceState == "listening" || voiceState == "speaking")
+                            Color.Black else Color.White,
+                        modifier = Modifier.size(32.dp)
+                    )
                 }
             }
         }
 
-        // ── BOTTOM AREA: Call Button ───────────────────────────────────────────
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(bottom = 56.dp)
-        ) {
+        Spacer(modifier = Modifier.height(48.dp))
 
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(200.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.05f))
-                    .clickable {
-                        Log.d(TAG, "TAPPED! State: $voiceState")
-                        if (voiceState == "idle") {
-                            val hasPermission = ContextCompat.checkSelfPermission(
-                                context, Manifest.permission.RECORD_AUDIO
-                            ) == PackageManager.PERMISSION_GRANTED
-                            if (!hasPermission) {
-                                permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                            } else {
-                                val s = VoiceSession { voiceState = it }
-                                session = s
-                                s.start()
-                            }
-                        } else {
-                            session?.stop()
-                            session = null
-                            voiceState = "idle"
-                        }
-                    }
-            ) {
-                if (voiceState == "listening" || voiceState == "speaking") {
-                    PulseRing(size = 200, color = Color.White)
-                    PulseRing(size = 160, color = Color.White, delayMillis = 300)
-                }
-
-                Box(
-                    modifier = Modifier
-                        .size(120.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (voiceState == "idle") Color.White.copy(alpha = 0.1f)
-                            else Color.White.copy(alpha = 0.2f)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(80.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (voiceState == "listening" || voiceState == "speaking")
-                                    Color.White else Color.White.copy(alpha = 0.15f)
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = if (voiceState == "idle") Icons.Default.Call
-                            else Icons.Default.Close,
-                            contentDescription = "Voice",
-                            tint = if (voiceState == "listening" || voiceState == "speaking")
-                                Color.Black else Color.White,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            if (voiceState != "idle") {
-                Text(
-                    text = "Tap to end",
-                    color = Color.White.copy(alpha = 0.3f),
-                    fontSize = 14.sp
-                )
-            }
+        if (voiceState != "idle") {
+            Text(
+                text = "Tap to end",
+                color = Color.White.copy(alpha = 0.3f),
+                fontSize = 14.sp
+            )
         }
     }
 }
 
 /**
- * Voice session with auto-reconnect.
+ * Voice session — reconnects WebSocket after each turn_complete.
  *
- * After each turn_complete, the WebSocket reconnects automatically.
- * Mic thread and playback thread stay alive the entire session.
- * The mic thread reads the current WebSocket reference atomically.
+ * Strategy:
+ * - One persistent mic thread + playback thread for the whole session
+ * - Fresh WebSocket (= fresh Gemini session) per conversation turn
+ * - isSendingAudio gates mic during AI speech and reconnect window
+ * - Playback thread re-enables mic once audio queue drains
  */
 private class VoiceSession(
     private val onStateChange: (String) -> Unit
@@ -264,7 +211,13 @@ private class VoiceSession(
         isRunning.set(true)
         onStateChange("connecting")
 
-        // Create AudioTrack (24kHz from server)
+        setupAudioTrack()
+        startPlaybackThread()
+        startMicThread()
+        connectWebSocket()
+    }
+
+    private fun setupAudioTrack() {
         val sampleRate = 24000
         val minBuf = AudioTrack.getMinBufferSize(
             sampleRate,
@@ -287,77 +240,92 @@ private class VoiceSession(
         )
         audioTrack = track
         track.play()
-        Log.d(TAG, "AudioTrack started")
+        Log.d(TAG, "AudioTrack started at 24kHz")
+    }
 
-        // Start playback thread
+    private fun startPlaybackThread() {
         playbackThread = Thread {
             try {
                 while (isRunning.get() && !Thread.currentThread().isInterrupted) {
                     val data = audioQueue.poll(100, TimeUnit.MILLISECONDS)
                     if (data != null) {
-                        track.write(data, 0, data.size)
+                        audioTrack?.write(data, 0, data.size)
+                        onStateChange("speaking")
+                    } else {
+                        // Queue drained — AI finished speaking, re-enable mic
+                        if (isRunning.get() && !isSendingAudio.get()) {
+                            Log.d(TAG, "Audio queue drained — re-enabling mic")
+                            isSendingAudio.set(true)
+                            onStateChange("listening")
+                        }
                     }
                 }
             } catch (_: InterruptedException) {}
             Log.d(TAG, "Playback thread ended")
         }.also { it.start() }
-
-        // Start mic thread
-        startMicThread()
-
-        // Connect first WebSocket
-        connectWebSocket()
     }
 
     private fun connectWebSocket() {
         if (!isRunning.get()) return
 
         Log.d(TAG, "Connecting WebSocket...")
-        isSendingAudio.set(false)
+        isSendingAudio.set(false) // hold mic until WS is open
 
         val request = Request.Builder().url(WS_URL).build()
 
-        val ws = client.newWebSocket(request, object : WebSocketListener() {
+        client.newWebSocket(request, object : WebSocketListener() {
+
             override fun onOpen(ws: WebSocket, response: Response) {
                 Log.d(TAG, "WebSocket OPEN")
                 wsRef.set(ws)
-                isSendingAudio.set(true)
+                isSendingAudio.set(true) // mic can now send
                 onStateChange("listening")
+            }
+
+            override fun onMessage(ws: WebSocket, bytes: ByteString) {
+                // AI audio arriving — pause mic so we don't echo back
+                isSendingAudio.set(false)
+                audioQueue.offer(bytes.toByteArray())
+                onStateChange("speaking")
             }
 
             override fun onMessage(ws: WebSocket, text: String) {
                 Log.d(TAG, "WS text: $text")
-                if (text.contains("turn_complete")) {
-                    Log.d(TAG, "Turn complete — will reconnect for next turn")
-                    isSendingAudio.set(false)
-                    wsRef.set(null)
+                try {
+                    val msg = org.json.JSONObject(text)
+                    when (msg.getString("type")) {
+                        "turn_complete" -> {
+                            Log.d(TAG, "Turn complete — reconnecting for next turn")
+                            isSendingAudio.set(false)
+                            wsRef.set(null)
+                            try { ws.close(1000, "turn done") } catch (_: Exception) {}
 
-                    // Close this WebSocket cleanly
-                    try { ws.close(1000, "turn done") } catch (_: Exception) {}
-
-                    // Small delay then reconnect
-                    Thread {
-                        try {
-                            Thread.sleep(300)
-                            if (isRunning.get()) {
-                                onStateChange("listening")
-                                connectWebSocket()
-                            }
-                        } catch (_: InterruptedException) {}
-                    }.start()
+                            // Reconnect after short delay for next turn
+                            Thread {
+                                try {
+                                    Thread.sleep(300)
+                                    if (isRunning.get()) {
+                                        onStateChange("listening")
+                                        connectWebSocket()
+                                    }
+                                } catch (_: InterruptedException) {}
+                            }.start()
+                        }
+                        "transcript" -> {
+                            Log.d(TAG, "AI said: ${msg.optString("text")}")
+                        }
+                        "error" -> {
+                            Log.e(TAG, "Server error: ${msg.optString("message")}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Text parse error: ${e.message}")
                 }
-            }
-
-            override fun onMessage(ws: WebSocket, bytes: ByteString) {
-                isSendingAudio.set(false) // pause mic during AI speech
-                audioQueue.offer(bytes.toByteArray())
-                onStateChange("speaking")
             }
 
             override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "WS failed: ${t.message}")
                 wsRef.set(null)
-                // Try to reconnect if session still running
                 if (isRunning.get()) {
                     Thread {
                         try {
@@ -372,7 +340,7 @@ private class VoiceSession(
             }
 
             override fun onClosed(ws: WebSocket, code: Int, reason: String) {
-                Log.d(TAG, "WS closed: $reason")
+                Log.d(TAG, "WS closed: code=$code reason=$reason")
                 wsRef.set(null)
             }
         })
@@ -396,20 +364,19 @@ private class VoiceSession(
                 )
                 audioRecord = recorder
                 recorder.startRecording()
-                Log.d(TAG, "Mic STARTED")
+                Log.d(TAG, "Mic STARTED at 16kHz")
 
                 val buffer = ByteArray(3200)
                 while (isRunning.get() && !Thread.currentThread().isInterrupted) {
                     val read = recorder.read(buffer, 0, buffer.size)
                     if (read > 0 && isSendingAudio.get()) {
-                        // Send to current WebSocket (may be null during reconnect)
                         wsRef.get()?.send(buffer.copyOf(read).toByteString())
                     }
                 }
 
-                Log.d(TAG, "Mic STOPPED")
                 recorder.stop()
                 recorder.release()
+                Log.d(TAG, "Mic STOPPED")
             } catch (e: Exception) {
                 Log.e(TAG, "Mic error: ${e.message}")
             }

@@ -12,7 +12,7 @@ enum class AppDestinations(
 ) {
     HOME("Home", Icons.Default.Home),
 
-    TEXTUI("TextUI", Icons.Default.Favorite),
+    UI("UI", Icons.Default.Favorite),
     VOICECHAT(label = "VoiceChat", Icons.Default.AccountBox),
 
     TEXTCHAT("TextChat", Icons.Default.Favorite),
